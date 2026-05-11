@@ -1056,12 +1056,12 @@ Process {
 			Write-CMLogEntry -Value "Available BIOS release date detected as $($AvailableBIOSVersion)." -Severity 1
 			
 			# Compare current BIOS release to available
-			if ($AvailableBIOSVersion -gt $CurrentBIOSReleaseDate) {
+			if ([System.Version]$AvailableBIOSVersion -gt [System.Version]$CurrentBIOSReleaseDate) {
 				# Write output to task sequence variable
 				if ($Script:PSCmdlet.ParameterSetName -notlike "Debug") {
 					$TSEnvironment.Value("NewBIOSAvailable") = $true
 				}
-				Write-CMLogEntry -Value "A new version of the BIOS has been detected. Current date release dated $($CurrentBIOSReleaseDate) will be replaced by release $($AvailableBIOSVersion)." -Severity 1
+				Write-CMLogEntry -Value "A new version of the BIOS has been detected. Current release $($CurrentBIOSReleaseDate) will be replaced by $($AvailableBIOSVersion)." -Severity 1
 			}
 		}
 		
@@ -1268,14 +1268,14 @@ Process {
 							}
 							
                             ###if ($PackageList.Count -eq 1) {
-                            #### �nderungen H�ckert 15.06.2021
 
                             if ($PackageList.Version.Length -gt 1) {
 								# Check if BIOS package is newer than currently installed
 								if ($ComputerManufacturer -match "Dell") {
 									Compare-BIOSVersion -AvailableBIOSVersion $PackageList[0].Version -ComputerManufacturer $ComputerManufacturer
 								} elseif ($ComputerManufacturer -match "Lenovo") {
-									Compare-BIOSVersion -AvailableBIOSVersion $PackageList[0].Version -AvailableBIOSReleaseDate $(($PackageList[0].Description).Split(":")[2]).Trimend(")") -ComputerManufacturer $ComputerManufacturer
+									#Compare-BIOSVersion -AvailableBIOSVersion $PackageList[0].Version -AvailableBIOSReleaseDate $(($PackageList[0].Description).Split(":")[2]).Trimend(")") -ComputerManufacturer $ComputerManufacturer
+									Compare-BIOSVersion -AvailableBIOSVersion $PackageList[0].Version -ComputerManufacturer $ComputerManufacturer
 								} elseif ($ComputerManufacturer -match "Hewlett-Packard|HP") {
 									Compare-BIOSVersion -AvailableBIOSVersion $PackageList[0].Version -ComputerManufacturer $ComputerManufacturer
 								} elseif ($ComputerManufacturer -match "Microsoft") {
