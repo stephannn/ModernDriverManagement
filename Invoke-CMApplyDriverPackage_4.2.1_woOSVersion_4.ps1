@@ -292,7 +292,7 @@ param(
 	[parameter(Mandatory = $true, ParameterSetName = "DebugCred")]
 	[parameter(Mandatory = $false, ParameterSetName = "XMLPackage")]
 	[ValidateNotNullOrEmpty()]
-	[ValidateSet("23H2", "22H2", "21H2", "21H1", "20H2", "2004", "1909", "1903", "1809", "1803", "1709", "1703", "1607")]
+	[ValidateSet("24H2", "23H2", "22H2", "21H2", "21H1", "20H2", "2004", "1909", "1903", "1809", "1803", "1709", "1703", "1607")]
 	[string]$TargetOSVersion,
 	
 	[parameter(Mandatory = $false, ParameterSetName = "BareMetal", HelpMessage = "Define the value that will be used as the target operating system architecture e.g. 'x64'.")]
