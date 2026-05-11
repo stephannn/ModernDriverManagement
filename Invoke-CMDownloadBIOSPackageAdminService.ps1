@@ -1256,7 +1256,6 @@ Process {
 								If ($null -eq $PackageList) {
 									# Fall back to select the latest model type match if no model name match is found
 									$PackageList = $PackageList | Sort-object -Property SourceDate -Descending | Select-Object -First 1
-                                    $packList = $PackageList | Sort-object -Property SourceDate -Descending | Select-Object -First 1
 								}
 							} elseif ($ComputerManufacturer -match "Hewlett-Packard|HP") {
 								# Determine the latest BIOS package by creation date
@@ -1274,7 +1273,6 @@ Process {
 								if ($ComputerManufacturer -match "Dell") {
 									Compare-BIOSVersion -AvailableBIOSVersion $PackageList[0].Version -ComputerManufacturer $ComputerManufacturer
 								} elseif ($ComputerManufacturer -match "Lenovo") {
-									#Compare-BIOSVersion -AvailableBIOSVersion $PackageList[0].Version -AvailableBIOSReleaseDate $(($PackageList[0].Description).Split(":")[2]).Trimend(")") -ComputerManufacturer $ComputerManufacturer
 									Compare-BIOSVersion -AvailableBIOSVersion $PackageList[0].Version -ComputerManufacturer $ComputerManufacturer
 								} elseif ($ComputerManufacturer -match "Hewlett-Packard|HP") {
 									Compare-BIOSVersion -AvailableBIOSVersion $PackageList[0].Version -ComputerManufacturer $ComputerManufacturer
