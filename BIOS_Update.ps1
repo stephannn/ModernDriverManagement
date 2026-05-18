@@ -1,4 +1,6 @@
 # This script checks the current BIOS version and compares it to the latest available version from the manufacturer. If an update is needed, it downloads and installs the update, then prompts the user to reboot. Requires Reboot Tool to be installed.
+# Requires Toast Notification be installed.
+# HP BIOS update requires HPCMSL PowerShell module.
 # https://github.com/damienvanrobaeys/Lenovo_BIOS_Auto_Update
 # https://github.com/gwblok/garytown/blob/master/RunScripts/Update-HPBIOS.ps1
 # https://github.com/MSEndpointMgr/Intune/tree/master/Firmware/Intune%20BIOS%20Update%20Control/BIOSUpdate_PR
@@ -8,10 +10,12 @@
 [string]$Global:LogFilePath = $null
 [string]$Global:LogFilePath = $(Join-Path -Path $IntuneManagementExtensionPath -ChildPath 'BIOS_Update.log')
 
-[string]$Global:RebootPath = "$(${env:ProgramFiles(x86)})\SPIE\Reboot\"
+[string]$Global:ToastNotificationPath = "$(${env:ProgramFiles(x86)})\Contoso\Reboot\"
 
 [string]$Global:HpBIOSPassword = $null
 [string]$Global:LenovoBIOSPassword = $null
+
+[bool]$Global:Remediate = $true
 
 function Write-Log
 {
@@ -89,7 +93,7 @@ function Write-Log
     }
 }
 
-function Check-RebootPending {
+function Test-RebootPending {
     function Test-RegistryValue {
         param (
             [parameter(Mandatory)][string]$Path,
@@ -146,10 +150,15 @@ function Check-RebootPending {
 function Show-ToastMessage(){
 	$Component = "ToastMessage"
 	
-	$ToastScript = Join-Path -Path $Global:RebootPath -ChildPath "Remediate-ToastNotification.ps1"
-	$BIOSConfig = Join-Path -Path $Global:RebootPath -ChildPath "config-toast-biosupdate.xml"
-	$PSInvoker = Join-Path -Path $Global:RebootPath -ChildPath "PSInvoker.exe"
+	$ToastScript = Join-Path -Path $Global:ToastNotificationPath -ChildPath "Remediate-ToastNotification.ps1"
+	$BIOSConfig = Join-Path -Path $Global:ToastNotificationPath -ChildPath "config-toast-biosupdate.xml"
+	$PSInvoker = Join-Path -Path $Global:ToastNotificationPath -ChildPath "PSInvoker.exe"
 	$TaskName = 'TempToast'
+
+    if((Test-Path $ToastScript -eq $false) -or (Test-Path $BIOSConfig -eq $false) -or (Test-Path $PSInvoker -eq $false)){
+        Write-Log -Component $Component -LogText "One or more required files for Toast Notification not found" -Type Error
+        return
+    }
 	
 	Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false
 
@@ -171,8 +180,12 @@ function Show-ToastMessage(){
 	Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false
 }
 
+if ($Global:Remediate -eq $true){ $Component = "BIOS - Remediation" } else {$Component = "BIOS - Detection"}
+Write-Log -Component $Component -LogText "Script started"
+
 # Check pending reboot
-if(Check-RebootPending -contains $true){
+if(Test-RebootPending -contains $true){
+    $Component = "Pending Reboot Check"
 	Write-Log -Component $Component -LogText "Pending Reboot. Aborting BIOS update."
     #Write-Log -Component $Component -LogText "Pending Reboot."
     #exit 1
@@ -215,58 +228,69 @@ if ($Manufacturer -match "HP")
 
 	try {
 		$Component = "HP BIOS"
-		[version]$BIOSVersion = Get-HPBIOSVersion
+		$BIOSVersion = Get-HPBIOSVersion
 		$LatestHPBIOS = Get-HPBIOSUpdates -Latest
+    } catch {
+        Write-Log -Component $Component -LogText "Error while retrieving BIOS information: $_" -Type Error
+        exit 1  
+    }
 
-		if ($BIOSVersion -ge [version]$LatestHPBIOS.Ver)
-		{
-			Write-Log -Component $Component -LogText "BIOS is already up-to-date: $BIOSVersion"
-			exit 0
-		}
-		
-		if ([datetime]$LatestHPBIOS.Date -le (Get-Date).AddDays(-14)) {
-			#Write-Output "BIOS update is at least 2 weeks old"
-		} else {
-			Write-Log -Component $Component -LogText "BIOS update is newer than 2 weeks. Not installing yet!"
-			exit 0
-		}
+    if ([datetime]$LatestHPBIOS.Date -le (Get-Date).AddDays(-14)) {
+        #Write-Output "BIOS update is at least 2 weeks old"
+    } else {
+        Write-Log -Component $Component -LogText "BIOS update is newer than 2 weeks. Not installing yet!"
+        exit 0
+    }
 
-		Write-Log -Component $Component -LogText "Updating BIOS: $BIOSVersion -> $($LatestHPBIOS.Ver)"
+    if ([System.Version]$LatestHPBIOS.Ver -gt [System.Version]$BIOSVersion -and $Global:Remediate -eq $true)
+    {
 
-		$BIOSPassSet = Get-HPBIOSSetupPasswordIsSet
+        Write-Log -Component $Component -LogText "Updating BIOS: $BIOSVersion -> $($LatestHPBIOS.Ver)"
 
-		if ($BIOSPassSet)
-		{
-			#Get-HPBIOSUpdates -Flash -Quiet -Yes -Password $Global:HpBIOSPassword
-			Write-Log -Component $Component -LogText "BIOS has password" -Type Error
-			exit 1
-		}
-		else
-		{
-			Get-HPBIOSUpdates -Flash -Quiet -Yes -BitLocker Suspend
-		}
+        try {
+            $BIOSPassSet = Get-HPBIOSSetupPasswordIsSet
 
-		Write-Log -Component $Component -LogText "BIOS update staged successfully"
+            if ($BIOSPassSet)
+            {
+                #Get-HPBIOSUpdates -Flash -Quiet -Yes -Password $Global:HpBIOSPassword
+                Write-Log -Component $Component -LogText "BIOS has password" -Type Error
+                exit 1
+            }
+            else
+            {
+                Get-HPBIOSUpdates -Flash -Quiet -Yes -BitLocker Suspend
+            }
 
-		try {   
-			Show-ToastMessage
-		}
-		catch {
-			Write-Log -Component $Component -LogText "Toast notification failed: $_" -Type Error
-		}
+            Write-Log -Component $Component -LogText "BIOS update staged successfully"
+        }
+        catch {
+            Write-Log -Component $Component -LogText "Error during BIOS update: $_" -Type Error
+            exit 1
+        }
 
-		# Give firmware staging time
-		#Start-Sleep -Seconds 30
+        try {   
+            Show-ToastMessage
 
-		# --- FORCED REBOOT ---
-		#shutdown.exe /r /t 60 /c "BIOS update installed. System will reboot to complete the update." /f
+            # Give firmware staging time
+            #Start-Sleep -Seconds 30
 
-		exit 0
-	}
-	catch {
-		Write-Log -Component $Component -LogText "Error during remediation: $_" -Type Error
-		exit 1
-	}
+            # --- FORCED REBOOT ---
+            #shutdown.exe /r /t 60 /c "BIOS update installed. System will reboot to complete the update." /f
+        }
+        catch {
+            Write-Log -Component $Component -LogText "Toast notification failed: $_" -Type Error
+        }
+
+        exit 0
+
+    } elseif ([System.Version]$LatestHPBIOS.Ver -gt [System.Version]$BIOSVersion -and $Global:Remediate -eq $false) {
+        Write-Log -Component $Component -LogText "BIOS update available: $BIOSVersion -> $($LatestHPBIOS.Ver)"
+        exit 1
+    } else {
+        Write-Log -Component $Component -LogText "BIOS is already up-to-date: $BIOSVersion"
+        exit 0
+    }
+
 } elseif ($Manufacturer -eq "lenovo"){
 
     $Component = "Lenovo BIOS"
@@ -315,7 +339,7 @@ if ($Manufacturer -match "HP")
 	
 	$LatestHPBIOSVersion = $LatestHPBIOS.version
 
-	if([System.Version]$LatestHPBIOSVersion -gt [System.Version]$BIOSVersion) {
+	if([System.Version]$LatestHPBIOSVersion -gt [System.Version]$BIOSVersion -and $Global:Remediate -eq $true) {
 		
 		Write-Log -Component $Component -LogText "Downloading BIOS: $LatestHPBIOSVersion"
 		Invoke-WebRequest -Uri ($baseUrl + $PackageXml.Package.Files.Installer.File.Name) -OutFile ("$($env:windir)\Temp\" + "Lenovo_BIOS_Update_$($LatestHPBIOSVersion).exe")
@@ -386,7 +410,9 @@ if ($Manufacturer -match "HP")
 				Remove-Item -Path ("$($env:windir)\Temp\" + "Lenovo_BIOS_Update_$($LatestHPBIOSVersion).exe") -Force -ErrorAction SilentlyContinue
 			}
 		}
-		
+    } elseif ([System.Version]$LatestHPBIOSVersion -gt [System.Version]$BIOSVersion -and $Global:Remediate -eq $false) {
+        Write-Log -Component $Component -LogText "BIOS update available: $BIOSVersion -> $LatestHPBIOSVersion"
+        exit 1
 	} else {
 		Write-Log -Component $Component -LogText "BIOS is already up-to-date: $BIOSVersion"
 		exit 0
